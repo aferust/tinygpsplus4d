@@ -5,7 +5,8 @@
     ],
     "copyright": "Copyright (C) 2008-2024 Mikal Hart",
     "description": "TinyGPSPlus4d is a dlang port of the TinyGPSPlus (-betterC).",
-    "license": "LGPL-2.1",
+    "license": "LGPL-2.1+",
     "name": "tinygpsplus4d",
-    "version": "0.0.1"
+    "version": "0.0.1",
+    "dflags": ["-betterC"]
 }

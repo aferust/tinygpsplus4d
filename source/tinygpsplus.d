@@ -31,12 +31,17 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 module tinygpsplus;
 
+version(LDC){
+    version(D_BetterC){
+        pragma(LDC_no_moduleinfo);
+    }
+}
+
 import std.stdint;
 
 import core.stdc.inttypes;
 import core.stdc.string;
-
-enum TWO_PI = 2*PI;
+import core.stdc.math;
 
 enum _GPS_VERSION = "1.1.0"; // software version of this library (the original c++ code)
 enum _GPS_MPH_PER_KNOT = 1.15077945;
@@ -56,14 +61,9 @@ auto COMBINE(uint sentenceType, uint termNumber) @nogc nothrow
     return (sentenceType << 5) | termNumber;
 }
 
-version( D_BetterC ){
-    import core.stdc.ctype : isDigit = isdigit;
-    import core.stdc.math;
-    enum PI = 3.14159265358979323846;
-}else{
-    import std.ascii : isDigit;
-    import std.math;
-}
+enum PI = 3.14159265358979323846;
+enum M_PI = PI;
+enum TWO_PI = 2*PI;
 
 uint millis() @nogc nothrow
 {
@@ -187,7 +187,39 @@ private:
     }
 }
 
-extern (C) long atol(const char *str) @nogc nothrow;
+int atol(const char *str) @nogc nothrow
+{
+    int result = 0;
+    int sign = 1;
+    int i = 0;
+
+    // Boşlukları atla
+    while (str[i] == ' ' || str[i] == '\t' || str[i] == '\n') {
+        i++;
+    }
+
+    // İşaret kontrolü
+    if (str[i] == '-') {
+        sign = -1;
+        i++;
+    } else if (str[i] == '+') {
+        i++;
+    }
+
+    // Sayı karakterlerini dönüştür
+    while (str[i] >= '0' && str[i] <= '9') {
+        result = result * 10 + (str[i] - '0');
+        i++;
+    }
+
+    // İşareti uygula ve sonucu döndür
+    return result * sign;
+}
+
+bool isDigit(char ch) @nogc nothrow
+{
+    return (ch >= '0' && ch <= '9');
+}
 
 struct TinyGPSTime
 {
@@ -400,7 +432,7 @@ public:
                 bool isValidSentence = false;
                 if (curTermOffset < term.sizeof)
                 {
-                    term[curTermOffset] = 0;
+                    term.ptr[curTermOffset] = 0;
                     isValidSentence = endOfTermHandler();
                 }
                 ++curTermNumber;
@@ -420,7 +452,7 @@ public:
 
         default: // ordinary characters
             if (curTermOffset < term.sizeof - 1)
-            term[curTermOffset++] = c;
+            term.ptr[curTermOffset++] = c;
             if (!isChecksumTerm)
             parity ^= c;
             return false;
@@ -469,7 +501,7 @@ public:
         delta += term1 * term1;
         delta = sqrt(delta);
         double denom = (slat1 * slat2) + (clat1 * clat2 * cdlong);
-        delta = atan2(delta, denom);
+        delta = _atan2(delta, denom);
         return delta * _GPS_EARTH_MEAN_RADIUS;
     }
 
@@ -485,7 +517,7 @@ public:
         double a1 = sin(dlon) * cos(lat2);
         double a2 = sin(lat1) * cos(lat2) * cos(dlon);
         a2 = cos(lat1) * sin(lat2) - a2;
-        a2 = atan2(a1, a2);
+        a2 = _atan2(a1, a2);
         if (a2 < 0.0)
         {
             a2 += TWO_PI;
@@ -497,7 +529,7 @@ public:
     {
         static immutable(const(char)*[]) directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
         int direction = cast(int)((course + 11.25f) / 22.5f);
-        return directions[direction % 16];
+        return directions.ptr[direction % 16];
     }
 
     static int32_t parseDecimal(char* term)
@@ -723,12 +755,36 @@ private:
     }
 }
 
-double radians(double degrees) @nogc nothrow
+@nogc nothrow:
+
+double radians(double degrees) 
 {
     return degrees * (PI / 180.0);
 }
 
-double degrees(double radians) @nogc nothrow
+double degrees(double radians)
 {
     return radians * (180.0 / PI);
+}
+
+double _atan2(double y, double x) // stdc.atan2 has linker issues with betterC
+{
+    if (x == 0 && y == 0) {
+        return 0.0; // or NaN 
+    }
+
+    double r = sqrt(x * x + y * y); // Vektörün normu
+    double sin_theta = y / r;
+    double cos_theta = x / r;
+
+    if (cos_theta > 0) {
+        // 1. veya 4. çeyrek
+        return asin(sin_theta);
+    } else if (cos_theta < 0) {
+        // 2. veya 3. çeyrek
+        return (sin_theta >= 0 ? M_PI - asin(sin_theta) : -M_PI - asin(sin_theta));
+    } else {
+        // cos_theta == 0
+        return (sin_theta > 0 ? M_PI / 2 : -M_PI / 2);
+    }
 }
