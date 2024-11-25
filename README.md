@@ -5,7 +5,7 @@
  * It never uses dynamic allocations.
  * It allows you parsing NMEA sentences read from [GPS receivers](https://randomnerdtutorials.com/esp32-neo-6m-gps-module-arduino/).
 
-## Example:
+## Example with dummy data:
 ```d
 import tinygpsplus;
 
@@ -82,5 +82,43 @@ void displayInfo()
     printf(" HDOP: %.1f", gps.hdop.hdop());
     printf(" Nof.sat: %d", gps.satellites.value());
     printf("\n");
+}
+```
+## Example with a GPS device connected via serial port
+
+```d
+import tinygpsplus;
+
+TinyGPSPlus gps;
+
+import core.time;
+import serial.device; // use a serial port library such as serial-port
+
+void main()
+{
+    Duration timeoutread = dur!("msecs")(2000);
+    Duration timeoutwrite = dur!("msecs")(2000);
+    string port = "COM5"; // for posix: /dev/ttyusb0, /dev/ttyacm0 etc.
+
+    auto com = new SerialPort(port, timeoutread, timeoutwrite);
+    scope (exit) com.close;
+    com.speed = BaudRate.BR_9600;
+
+    ubyte[256] buffer;
+
+    while(true){
+        try {
+            com.read(buffer);
+            foreach (char c; cast(char[])buffer[]) // The library is fed data char by char (designed for connected devices in mind).
+            {
+                if (gps.encode(c))
+                        displayInfo(); // check validity, positioning quality, accuracy, get location info etc.
+            }
+        } catch (TimeoutException e){ // handle the serial connection related issues etc.
+            import std.stdio : writeln; 
+            writeln(e.msg);
+        }
+        
+    }
 }
 ```
